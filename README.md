@@ -1,4 +1,6 @@
 # Virtual Memory, Phyical Memory, and the Disk
+RECORDING: https://drive.google.com/file/d/1Hf3ucGDNIh-svP8mUOLeSWtKpb40NsL1/view
+
 One of the big appeals of virtual memory is the ability to allocate more memory to a process than is physically available. This is achieved by swapping pages of memory between physical memory and disk storage. This simulation visualizes that useful property of paging, letting the user interactively create new data and watch where that data is stored in the Virtual and Physical address spaces.
 
 # First: Installing Kivy and Running Sim
