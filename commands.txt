@@ -1,11 +1,11 @@
-SAVE one 32
-SAVE two 32
-SAVE three 32
-SAVE four 32
-SAVE five 32
-SAVE six 32
-SAVE seven 32
-SAVE eight 32
+HEAP one 20
+HEAP two 8
+STACK three 4
+STACK four 16
+STACK five 8
+STACK six 4
+STACK seven 32
+STACK eight 32
 
 GET four
 GET five

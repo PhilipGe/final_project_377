@@ -7,6 +7,7 @@ from kivy.uix.textinput import TextInput
 from random import randrange
 
 RED = (1,0,0,1)
+LGR = (0,0.3,0,1)
 GRN = (0,0.2,0,1)
 BLU = (0,0,1,1)
 WHT = (1,1,1,1)
@@ -17,6 +18,8 @@ class Variable:
         self.name = name
         self.size = size
 
+    def to_string(self):
+        return self.name + " " + str(self.size)
 
 class Page:
     
@@ -25,6 +28,7 @@ class Page:
         self.size = size
         self.used_size = 0
         self.variables = []
+        self.highlight = False
 
     def add_variable(self, variable: Variable):
         self.variables.append(variable)
@@ -48,10 +52,8 @@ class StackState:
         
         self.number_of_pages = int(address_space_size / size_of_page)
 
-        
-
         if(not randomize_pages):
-            self.pages = [Page(page_id) for page_id in range(self.number_of_pages-1, -1,-1)]
+            self.pages = [Page(page_id, size_of_page) for page_id in range(self.number_of_pages-1, -1,-1)]
             if(cache):
                 self.full = False
                 self.page_queue = [p.id for p in self.pages]
@@ -159,12 +161,13 @@ class StackState:
 #A 'Stack' in the UI sense is a column of rectangles
 class StackUI:
     class RectDescriptor:
-        def __init__(self, pos, size, text, variable_names, color = (1,1,1,1)):
+        def __init__(self, pos, size, text, variable_names, color = (1,1,1,1), highlight = False):
             self.pos = pos
             self.size = size
             self.color = color
             self.text = text
             self.variable_names = variable_names
+            
     
     def __init__(self, fractional_size, fractional_position, state: StackState):
         self.width_fraction = fractional_size[0]
@@ -189,15 +192,25 @@ class StackUI:
         #Set up descriptions of rectangles to draw
         self.rectangle_descriptors = []
         for page_id in range(self.state.number_of_pages):
+            if(self.state.pages[page_id].highlight):
+                color = LGR
+            elif(self.state.pages[page_id].used_size != 0):
+                color = GRN
+            else:
+                color = WHT
+
+            self.state.pages[page_id].highlight = False
             self.rectangle_descriptors.append(
                 self.RectDescriptor(
                     pos=(self.position[0],self.position[1] + page_id*(self.cell_height)), 
                     size=(self.width, self.cell_height-1),
-                    color= GRN if self.state.pages[page_id].used_size != 0 else WHT,
+                    color=color,
                     text= str(self.state.pages[page_id].id),
-                    variable_names=[v.name for v in self.state.pages[page_id].variables]
+                    variable_names=[v.to_string() for v in self.state.pages[page_id].variables],
                 )
             )
+
+
         
 class MainCanvas(Widget):
 
@@ -205,10 +218,11 @@ class MainCanvas(Widget):
         super(MainCanvas, self).__init__(**kwargs)
         self.file_loaded = False
 
-        address_space_size = 32
-        page_size = 4
+        page_size = 32
 
-        cache_size = 12
+        address_space_size = page_size*8
+        
+        cache_size = page_size*3
 
         self.stack_state = StackState(address_space_size, page_size)
         self.disk_state = StackState(address_space_size, page_size, randomize_pages=True)
@@ -252,15 +266,13 @@ class MainCanvas(Widget):
             for rect_desc in stack_ui.rectangle_descriptors:
                 Color(*rect_desc.color)
                 Rectangle(pos=rect_desc.pos, size=rect_desc.size)
-        
+                
         for rect_desc in stack_ui.rectangle_descriptors:
-            l = Label(text=rect_desc.text, pos=rect_desc.pos, size=rect_desc.size, halign="center", valign="middle", font_size=100)
+            l = Label(text=rect_desc.text, pos=rect_desc.pos, text_size=(rect_desc.size[0]+Window.width*0.13,rect_desc.size[1]), halign="right", valign="top", font_size=80, 
+                      color=(0,0,0,1) if rect_desc.color == WHT else WHT
+                      )
             self.add_widget(l)
-        
-        for rect_desc in stack_ui.rectangle_descriptors:
-            l = Label(text=rect_desc.text, pos=rect_desc.pos, size=rect_desc.size, halign="center", valign="middle", font_size=100)
-            self.add_widget(l)
-            name_list = "" if len(rect_desc.variable_names) == 0 else '{:20s} '.format(rect_desc.variable_names[0])
+            name_list = "" if len(rect_desc.variable_names) == 0 else '   {:16s} '.format(rect_desc.variable_names[0])
 
             m = 0
             for n_i in range(1, len(rect_desc.variable_names)):
@@ -268,7 +280,7 @@ class MainCanvas(Widget):
                 if(m % 2 == 0):
                     name_list += name
                 else:
-                    name_list += "\n" + '{:20s} '.format(name)
+                    name_list += "\n" + '   {:16s} '.format(name)
                 m += 1
                 
             name_pos = (rect_desc.pos[0] + rect_desc.size[0]/3, rect_desc.pos[1]+Window.height*0.05)
@@ -302,6 +314,10 @@ class MainCanvas(Widget):
         self.draw_stacks()
         return 0
     
+    def highlight_page(self, page_id):
+        self.stack_state.get_page_with_id(page_id).highlight = True
+        self.cache_state.get_page_with_id(page_id).highlight = True
+    
     def get_variable(self, var_name, verbose = True):
         page = self.stack_state.find_variables_page(var_name)
         if(page == -1):
@@ -314,13 +330,16 @@ class MainCanvas(Widget):
             self.cache_state.update_queue(page.id)
         else:
             self.cache_state.get_page_from_disk(page.id, self.stack_state, self.disk_state)
+        
+        self.highlight_page(page.id)
 
     #____________________Interpeter______________________
     def execute_command(self, arr):
+        print(arr)
         if(arr[0] == ''):
             return
         
-        commands = ["get", "heap", "stack"]
+        commands = ["get", "heap", "stack", "load"]
         if(arr[0].lower() not in commands):
             print("Error: " + arr[0] + " is not a command")
             self.text_input.text = ''
@@ -337,29 +356,33 @@ class MainCanvas(Widget):
                 print("Error: the GET commands takes one argument: GET VAR_NAME")
             self.get_variable(arr[1])
         
-        elif(arr[0] == "heap"):
+        elif(arr[0].lower() == "heap"):
             if(len(arr) != 3):
-                print("Error: the SAVE commands takes two arguments: SAVE VAR_NAME SIZE")
+                print("Error: the HEAP command takes two arguments: HEAP VAR_NAME SIZE")
             self.save_variable(arr[1],int(arr[2]),heap=True)
         
-        elif(arr[0] == "stack"):
+        elif(arr[0].lower() == "stack"):
             if(len(arr) != 3):
-                print("Error: the SAVE commands takes two arguments: SAVE VAR_NAME SIZE")
+                print("Error: the STACK command takes two arguments: STACK VAR_NAME SIZE")
             self.save_variable(arr[1],int(arr[2]),heap=False)
+        
+        elif(arr[0].lower() == "load"):
+            if(len(arr) != 2):
+                print("Error: the LOAD command takes two arguments: LOAD FILENAME")
+            self.execute_file(arr[1])
 
     def execute_file(self, filename):
-        with open(filename) as f:
-            arr = f.readlines()
+        try:
+            with open(filename) as f:
+                arr = f.readlines()
         
-        for line in arr:
-            self.execute_command([e.strip() for e in line.split(" ")])
+            for line in arr:
+                self.execute_command([e.strip() for e in line.split(" ")])
+        
+        except:
+            print("File " + filename + " not found")
     
     def on_enter(self, instance):
-        if(not self.file_loaded):
-            self.execute_file("commands.txt")
-            self.file_loaded = True
-            self.on_size(0,0)
-            return
         # Retrieve the user's input
         user_input = self.text_input.text
 
